@@ -4,6 +4,7 @@
 #include <dlfcn.h>
 #include "tcp2quic.h"
 #include "../include/msquic.h"
+#include "../include/msquic_posix.h"
 
 #ifndef UNREFERENCED_PARAMETER
 #define UNREFERENCED_PARAMETER(P) (void)(P)
@@ -18,13 +19,29 @@ const QUIC_API_TABLE* MsQuic   = NULL;
 HQUIC Registration             = NULL;
 static int fd_count            = FILE_DESCRIPTOR_LOWER;
 HQUIC Listeners[MAX_LISTENERS] = { 0 };
+QUIC_ADDR Addresses[MAX_LISTENERS] = { 0 };
 
 static int (*original_socket)(int, int, int) = NULL;
+static int (*original_bind)(int, const struct sockaddr *, socklen_t) = NULL;
+static int (*original_listen)(int, int) = NULL;
+static int (*original_accept)(int, struct sockaddr *, socklen_t *) = NULL;
+static ssize_t (*original_read)(int, void *, size_t) = NULL;
+static ssize_t (*original_write)(int, const void *, size_t) = NULL;
+static int (*original_close)(int) = NULL;
+
 static void init_originals() {
     if (!original_socket) {
         original_socket = dlsym(RTLD_NEXT, "socket");
+        original_bind   = dlsym(RTLD_NEXT, "bind");
+        original_listen = dlsym(RTLD_NEXT, "listen");
+        original_accept = dlsym(RTLD_NEXT, "accept");
+        original_read   = dlsym(RTLD_NEXT, "read");
+        original_write  = dlsym(RTLD_NEXT, "write");
+        original_close  = dlsym(RTLD_NEXT, "close");
     }
 }
+
+const QUIC_BUFFER Alpn = { sizeof("sample") - 1, (uint8_t*)"sample" };
 
 QUIC_STATUS init_MsQuic()
 {
@@ -97,13 +114,14 @@ int socket(int domain, int type, int protocol)
     int fd;
 
     if (MsQuic == NULL || Registration == NULL)
+    {
         if (QUIC_FAILED(status = init_MsQuic()))
         {
-            errno = status;
-            return -1;
+            goto err;
         }
         else
             printf("Initialized MsQuic\n");
+    }
 
     fd = fd_count++;
     if (QUIC_FAILED(status = MsQuic->ListenerOpen(Registration, ServerListenerCallback, NULL, &Listeners[LISTENER_IDX(fd)])))
@@ -119,19 +137,52 @@ err:
     errno = status;
     return -1;
 }
-/*
+
 int bind(int sockfd, const struct sockaddr *addr, socklen_t addrlen)
 {
-    printf("bind() called\n");
+    if (sockfd < FILE_DESCRIPTOR_LOWER ||
+        addr->sa_family != AF_INET ||
+        !Listeners[LISTENER_IDX(sockfd)])
+    {
+        init_originals();
+        return original_bind(sockfd, addr, addrlen);
+    }
+
+    QuicAddrSetFamily(&Addresses[LISTENER_IDX(sockfd)], QUIC_ADDRESS_FAMILY_INET);
+    QuicAddrSetPort(&Addresses[LISTENER_IDX(sockfd)], ntohs(((struct sockaddr_in*)addr)->sin_port));
+
+    QUIC_ADDR_STR addrStr = { 0 };
+
+    printf("Stored socket address and port\n");
     return 0;
 }
+
 
 int listen(int sockfd, int backlog)
 {
-    printf("listen() called\n");
+    if (!Listeners[LISTENER_IDX(sockfd)] ||
+        QuicAddrGetFamily(&Addresses[LISTENER_IDX(sockfd)]) != AF_INET)
+    {
+        init_originals();
+        return original_listen(sockfd, backlog);
+    }
+
+    QUIC_STATUS Status = QUIC_STATUS_SUCCESS;
+
+    if (QUIC_FAILED(Status = MsQuic->ListenerStart(Listeners[LISTENER_IDX(sockfd)], &Alpn, 1, &Addresses[LISTENER_IDX(sockfd)])))
+    {
+        printf("ListenerStart failed, 0x%x!\n", Status);
+        errno = Status;
+        return -1;
+    }
+    QUIC_ADDR_STR addrStr = { 0 };
+    if (QuicAddrToString(&Addresses[LISTENER_IDX(sockfd)], &addrStr))
+        printf("QUIC: Start listening on %s\n", addrStr.Address);
+
     return 0;
 }
 
+/*
 int accept(int sockfd, struct sockaddr *addr, socklen_t *addrlen)
 {
     printf("accept() called\n");

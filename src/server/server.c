@@ -32,7 +32,7 @@ int main() {
     
     // Listen for connections
     if (listen(server_fd, 3) < 0) {
-        perror("listen");
+        perror("listen failed");
         exit(EXIT_FAILURE);
     }
     

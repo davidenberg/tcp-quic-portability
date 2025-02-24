@@ -21,7 +21,7 @@ Client: $(CLIENT_SRC)/client.c
 	$(CC) $(CFLAGS) -o bin/client $(CLIENT_SRC)/client.c
 
 Library:
-	$(CC) $(CFLAGS) -shared -fPIC -L lib -o lib/libtcp2quic.so $(LIB_SRC)/tcp2quic.c -lmsquic -ldl
+	$(CC) $(CFLAGS) -shared -fPIC -O3 -finline-functions -o lib/libtcp2quic.so $(LIB_SRC)/tcp2quic.c -lmsquic -ldl
 
 clean:
 	$(RM) bin/server bin/client lib/libtcp2quic.so

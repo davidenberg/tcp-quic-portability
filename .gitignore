@@ -53,3 +53,6 @@ dkms.conf
 
 #Client-server binaries
 bin/*
+
+#VScode config
+.vscode
