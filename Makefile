@@ -1,5 +1,5 @@
 CC     = gcc
-CFLAGS = -g -Wall -pedantic
+CFLAGS = -g -Wall
 RM     = rm -f
 
 SERVER_SRC = src/server

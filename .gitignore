@@ -56,3 +56,6 @@ bin/*
 
 #VScode config
 .vscode
+
+#Dont commit certificates
+cert/*
