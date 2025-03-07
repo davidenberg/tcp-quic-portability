@@ -167,7 +167,7 @@ QUIC_STATUS QUIC_API ServerConnectionCallback(HQUIC Connection,
             printf("[strm][%p] Peer started\n", Event->PEER_STREAM_STARTED.Stream);
             MsQuic->SetCallbackHandler(Event->PEER_STREAM_STARTED.Stream, (void*)StreamCallback, ctx);
             struct QUIC_ctx* qctx = (struct QUIC_ctx*)MsQuic->GetContext(Connection);
-            qctx->Streams[LISTENER_IDX(qctx->fd)] = Event->PEER_STREAM_STARTED.Stream;
+            qctx->Streams[CONNECTION_IDX(qctx->fd)] = Event->PEER_STREAM_STARTED.Stream;
             break;
         default:
             break;
@@ -208,7 +208,6 @@ QUIC_STATUS QUIC_API ServerListenerCallback(HQUIC Listener,
     QUIC_STATUS Status = QUIC_STATUS_SUCCESS;
 
     UNREFERENCED_PARAMETER(Listener);
-    UNREFERENCED_PARAMETER(ctx);
 
     switch (Event->Type)
     {
@@ -218,7 +217,7 @@ QUIC_STATUS QUIC_API ServerListenerCallback(HQUIC Listener,
             MsQuic->SetCallbackHandler(Event->NEW_CONNECTION.Connection, (void*)ServerConnectionCallback, ctx);
             Status = MsQuic->ConnectionSetConfiguration(Event->NEW_CONNECTION.Connection, Configuration);
             struct QUIC_ctx* qctx = (struct QUIC_ctx*)MsQuic->GetContext(Listener);
-            qctx->Connections[LISTENER_IDX(qctx->fd)] = Event->NEW_CONNECTION.Connection;
+            qctx->Connections[CONNECTION_IDX(qctx->fd)] = Event->NEW_CONNECTION.Connection;
             break;
         
         default:
@@ -288,7 +287,7 @@ int bind(int sockfd, const struct sockaddr *addr, socklen_t addrlen)
     struct QUIC_ctx *qctx = malloc(sizeof(struct QUIC_ctx));
     qctx->Connections = Connections;
     qctx->Streams = Streams;
-    qctx->fd = sockfd;
+    qctx->fd =  LISTENER_IDX(sockfd) + CONNECTIONS_FILE_DESCRIPTION_LOWER;
     read_buf = malloc(BUF_SIZE);
     qctx->buf = read_buf;
     qctx->size = &read_buf_length;
@@ -502,20 +501,53 @@ ssize_t read(int fd, void *buf, size_t count)
     return ret;
 }
 
-/*
+
 int close(int fd)
 {
+    init_originals();
     if (fd < FILE_DESCRIPTOR_LOWER)
     {
         return original_close(fd);
     }
 
+    int idx = 0;
+    sleep(1); //give some time so outstanding operations may complete
     if (fd >= CONNECTIONS_FILE_DESCRIPTION_LOWER)
     {
-        MsQuic->ConnectionClose(Connections[CONNECTION_IDX(fd)]);
+        idx = CONNECTION_IDX(fd);
+
+        if (Streams[idx])
+        {
+            MsQuic->StreamClose(Streams[idx]);
+            Streams[idx] = NULL;
+        }
+        if (Connections[idx])
+        {
+            MsQuic->ConnectionClose(Connections[idx]);
+            Connections[idx] = NULL;
+        }
+    }
+    else
+    {
+        idx = LISTENER_IDX(fd);
+
+        if (Streams[idx])
+        {
+            MsQuic->StreamClose(Streams[idx]);
+            Streams[idx] = NULL;
+        }
+        if (Connections[idx])
+        {
+            MsQuic->ConnectionClose(Connections[idx]);
+            Connections[idx] = NULL;
+        }
+
+        if (Listeners[idx])
+        {
+            MsQuic->ListenerClose(Listeners[idx]);
+            Listeners[idx] = NULL;
+        }
     }
 
-    MsQuic->ConnectionClose(Connections[LISTENER_IDX(fd)]);
     return 0;
 }
-*/
