@@ -10,7 +10,7 @@ dir_guard=mkdir -p bin
 
 default: all
 
-all: Server Client Library
+all: Server Client Library Test
 
 Server: $(SERVER_SRC)/server.c
 	$(dir_guard)
@@ -22,6 +22,10 @@ Client: $(CLIENT_SRC)/client.c
 
 Library:
 	$(CC) $(CFLAGS) -shared -fPIC -O3 -finline-functions -o lib/libtcp2quic.so $(LIB_SRC)/tcp2quic.c -lmsquic -ldl
+
+Test:
+	$(CC) $(CFLAGS) -o bin/perf_server src/testing/server/server.c
+	$(CC) $(CFLAGS) -o bin/perf_client src/testing/client/client.c
 
 clean:
 	$(RM) bin/server bin/client lib/libtcp2quic.so

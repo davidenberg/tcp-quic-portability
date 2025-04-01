@@ -11,7 +11,7 @@
 #define UNREFERENCED_PARAMETER(P) (void)(P)
 #endif
 
-#define BUF_SIZE 1024
+#define BUF_SIZE 1024*1024*1024
 #define FILE_DESCRIPTOR_LOWER 10000
 #define CONNECTIONS_FILE_DESCRIPTION_LOWER 20000
 #define MAX_LISTENERS 128
@@ -33,6 +33,9 @@ HQUIC Streams[MAX_STREAMS]         = { 0 };
 
 uint8_t *read_buf;
 size_t read_buf_length = 0;
+int send_return = 1;
+int read_buf_offset = 0;
+int more_data = 0;
 
 struct QUIC_ctx {
     HQUIC *Connections;
@@ -116,22 +119,26 @@ QUIC_STATUS QUIC_API StreamCallback(HQUIC Stream,
                                     QUIC_STREAM_EVENT *Event)
 {
     UNREFERENCED_PARAMETER(ctx);
+    struct QUIC_ctx* qctx = (struct QUIC_ctx*)MsQuic->GetContext(Stream);
     switch (Event->Type)
     {
         case QUIC_STREAM_EVENT_SEND_COMPLETE:
             free(Event->SEND_COMPLETE.ClientContext);
-            printf("[strm][%p] Data sent\n", Stream);
+            send_return = 0;
+            //printf("[strm][%p] Data sent\n", Stream);
             break;
         case QUIC_STREAM_EVENT_RECEIVE:
-            printf("[strm][%p] Data received\n", Stream);
+            //printf("[strm][%p] Data received\n", Stream);
             int i;
-            struct QUIC_ctx* qctx = (struct QUIC_ctx*)MsQuic->GetContext(Stream);
             for (i = 0; i < Event->RECEIVE.BufferCount; i++)
             {
-                memcpy(qctx->buf, Event->RECEIVE.Buffers[i].Buffer, (size_t) Event->RECEIVE.Buffers[i].Length);
+                memcpy(qctx->buf + *qctx->size, Event->RECEIVE.Buffers[i].Buffer, (size_t) Event->RECEIVE.Buffers[i].Length);
+               *qctx->size += (size_t) Event->RECEIVE.Buffers[i].Length;
                 qctx->buf[(size_t) Event->RECEIVE.Buffers[i].Length] = '\0';
-                *qctx->size = (size_t) Event->RECEIVE.Buffers[i].Length;
+
             }
+            //while (*qctx->size != 0) usleep(250 * 1000); //Wait to allow receiver to process data
+            more_data = 1;
             break;
         case QUIC_STREAM_EVENT_PEER_SEND_SHUTDOWN:
             printf("[strm][%p] Peer shut down\n", Stream);
@@ -139,6 +146,11 @@ QUIC_STATUS QUIC_API StreamCallback(HQUIC Stream,
         case QUIC_STREAM_EVENT_PEER_SEND_ABORTED:
             printf("[strm][%p] Peer aborted\n", Stream);
             MsQuic->StreamShutdown(Stream, QUIC_STREAM_SHUTDOWN_FLAG_ABORT, 0);
+            /* Add some dummy data to read buffer so the read call returns */
+            qctx->buf[0] = '\0';
+            *qctx->size = 1;
+
+
             break;
         case QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE:
             printf("[strm][%p] All done\n", Stream);
@@ -464,6 +476,8 @@ ssize_t write(int fd, const void *buf, size_t count)
         printf("StreamSend failed, 0x%x!\n", Status);
         goto err;
     }
+    while(send_return) usleep(250 * 1000);
+    send_return = 1;
     return count;
 
 err:
@@ -492,12 +506,13 @@ ssize_t read(int fd, void *buf, size_t count)
     {
         return original_read(fd, buf, count);
     }
-    while (!read_buf_length) sleep(1); //block until we get some data
-    int ret = read_buf_length;
-    printf("QUIC: Read buff is %s\n", read_buf);
-    memcpy(buf, read_buf, read_buf_length);
-    memset(read_buf, 0, BUF_SIZE);
-    read_buf_length = 0;
+    while (!more_data) usleep(250 * 1000); //block until we get some data
+    more_data = 0;
+    int length = read_buf_length;
+    int ret = length - read_buf_offset;
+    //printf("QUIC: Read buff is %s\n", read_buf);
+    memcpy(buf, read_buf + read_buf_offset, length - read_buf_offset);
+    read_buf_offset = length;
     return ret;
 }
 
