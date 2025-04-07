@@ -128,7 +128,6 @@ QUIC_STATUS QUIC_API StreamCallback(HQUIC Stream,
             //printf("[strm][%p] Data sent\n", Stream);
             break;
         case QUIC_STREAM_EVENT_RECEIVE:
-            //printf("[strm][%p] Data received\n", Stream);
             int i;
             for (i = 0; i < Event->RECEIVE.BufferCount; i++)
             {
@@ -137,8 +136,6 @@ QUIC_STATUS QUIC_API StreamCallback(HQUIC Stream,
                 qctx->buf[(size_t) Event->RECEIVE.Buffers[i].Length] = '\0';
 
             }
-            //while (*qctx->size != 0) usleep(250 * 1000); //Wait to allow receiver to process data
-            more_data = 1;
             break;
         case QUIC_STREAM_EVENT_PEER_SEND_SHUTDOWN:
             printf("[strm][%p] Peer shut down\n", Stream);
@@ -476,7 +473,7 @@ ssize_t write(int fd, const void *buf, size_t count)
         printf("StreamSend failed, 0x%x!\n", Status);
         goto err;
     }
-    while(send_return) usleep(250 * 1000);
+    while(send_return) usleep(1000);
     send_return = 1;
     return count;
 
@@ -506,8 +503,7 @@ ssize_t read(int fd, void *buf, size_t count)
     {
         return original_read(fd, buf, count);
     }
-    while (!more_data) usleep(250 * 1000); //block until we get some data
-    more_data = 0;
+    while (read_buf_length <= read_buf_offset) usleep(1000); //block until we get some data
     int length = read_buf_length;
     int ret = length - read_buf_offset;
     //printf("QUIC: Read buff is %s\n", read_buf);

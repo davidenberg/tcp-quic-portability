@@ -7,7 +7,7 @@
 
 #define PORT 4443
 #define BUFFER_SIZE 1024 * 1024
-#define TOTAL_SIZE_MB 100L
+#define TOTAL_SIZE_MB 1000L
 
 void error(const char *msg) {
     perror(msg);
