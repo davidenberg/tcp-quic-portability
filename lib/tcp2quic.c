@@ -505,10 +505,13 @@ ssize_t read(int fd, void *buf, size_t count)
     }
     while (read_buf_length <= read_buf_offset) usleep(1000); //block until we get some data
     int length = read_buf_length;
-    int ret = length - read_buf_offset;
+    size_t ret = length - read_buf_offset;
     //printf("QUIC: Read buff is %s\n", read_buf);
-    memcpy(buf, read_buf + read_buf_offset, length - read_buf_offset);
-    read_buf_offset = length;
+    if (ret > count)
+        ret = count;
+
+    memcpy(buf, read_buf + read_buf_offset, ret);
+    read_buf_offset = read_buf_offset + ret;
     return ret;
 }
 

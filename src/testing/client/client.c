@@ -8,7 +8,7 @@
 
 #define SERVER_IP "127.0.0.1"
 #define PORT 4443
-#define BUFFER_SIZE 1024 * 1024 * 1024
+#define BUFFER_SIZE 1024 * 1024
 #define TOTAL_SIZE_MB 1000L
 
 size_t bytes_received = 0;
